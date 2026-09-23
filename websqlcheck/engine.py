@@ -31,6 +31,7 @@ class Scanner:
         self.headers = headers or {}
         self.console = Console()
         self.findings = []
+        self.errors = []
         self.error_detector = ErrorDetector()
         self.boolean_detector = BooleanDetector()
         self.time_detector = TimeDetector()
@@ -45,7 +46,8 @@ class Scanner:
     def build_client(self, target_headers=None):
         merged = dict(self.headers)
         merged.update(target_headers or {})
-        return HttpClient(self.config.timeout, self.config.proxy or None, merged, self.config.retries, self.config.rate, self.config.verify_tls)
+        delay = (1.0 / self.config.rate) if self.config.rate > 0 else 0.0
+        return HttpClient(self.config.timeout, self.config.proxy or None, merged, self.config.retries, delay, self.config.verify_tls, self.in_scope)
 
     def parameter_jobs(self, target: Target):
         jobs = []
@@ -141,12 +143,15 @@ class Scanner:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn()) as progress:
             task = progress.add_task("Scanning", total=len(jobs))
             with ThreadPoolExecutor(max_workers=max(1, self.config.workers)) as pool:
-                futures = [pool.submit(self.scan_parameter, target, job) for target, job in jobs]
+                futures = {pool.submit(self.scan_parameter, target, job): (target, job) for target, job in jobs}
                 for future in as_completed(futures):
+                    target, job = futures[future]
                     try:
                         results = future.result()
-                    except Exception:
+                    except Exception as exc:
                         results = []
+                        self.errors.append((target.url, job[1], str(exc)))
+                        self.console.print(f"[yellow]Warning:[/yellow] test failed for {job[1]} on {target.url}: {exc}")
                     self.findings.extend(results)
                     progress.advance(task)
         return self.findings
