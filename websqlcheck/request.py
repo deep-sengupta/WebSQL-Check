@@ -47,6 +47,8 @@ def parse_raw_request(path: str, base_url: str) -> Target:
     if target.startswith("http://") or target.startswith("https://"):
         url = target
     else:
+        if not base_url:
+            raise ValueError("--base-url is required when the request target is relative")
         url = base_url.rstrip("/") + "/" + target.lstrip("/")
     return Target(url=url, method=method, headers=headers, body=body, content_type=headers.get("Content-Type", ""))
 
@@ -102,5 +104,5 @@ def mutate_json(body: str, path, value: str) -> str:
 
 
 def mutate_xml(body: str, token: str, value: str) -> str:
-    import re
-    return re.sub(r">" + re.escape(token) + r"<", ">" + value + "<", body, count=1)
+    pattern = r">(\s*)" + re.escape(token) + r"(\s*)<"
+    return re.sub(pattern, lambda m: ">" + m.group(1) + value + m.group(2) + "<", body, count=1)
