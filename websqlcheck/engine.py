@@ -123,7 +123,7 @@ class Scanner:
                 result = request_with_payload(payload)
                 if result.error:
                     continue
-                findings.extend(self.error_detector.detect(result, name, payload))
+                findings.extend(self.error_detector.detect(baseline_result, result, name, payload))
                 if findings:
                     break
         if "boolean" in self.config.techniques:
