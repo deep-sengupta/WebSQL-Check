@@ -38,26 +38,29 @@ class ErrorDetector:
         path = Path(__file__).resolve().parent / "sql_errors.txt"
         self.patterns = [x.strip() for x in path.read_text(encoding="utf-8", errors="ignore").splitlines() if x.strip()]
 
-    def detect(self, result: HttpResult, parameter: str, payload: str) -> list[Finding]:
+    def detect(self, baseline: HttpResult, result: HttpResult, parameter: str, payload: str) -> list[Finding]:
         findings = []
+        baseline_matched = set()
         matched = []
         dbs = []
         for pattern in self.patterns:
             try:
-                if re.search(pattern, result.body, re.I | re.M):
+                if re.search(pattern, baseline.body, re.I | re.M):
+                    baseline_matched.add(pattern)
+                if re.search(pattern, result.body, re.I | re.M) and pattern not in baseline_matched:
                     matched.append(pattern)
             except re.error:
                 continue
         for db, patterns in ERROR_SIGNATURES.items():
             for pattern in patterns:
                 try:
-                    if re.search(pattern, result.body, re.I | re.M):
+                    if re.search(pattern, result.body, re.I | re.M) and not re.search(pattern, baseline.body, re.I | re.M):
                         dbs.append(db)
                 except re.error:
                     continue
         if matched:
             unique_dbs = list(dict.fromkeys(dbs))
-            findings.append(Finding("error", parameter, payload, result.url, "high", min(1.0, 0.65 + len(matched) * 0.03), {"matched_patterns": matched[:12], "database_guesses": unique_dbs}))
+            findings.append(Finding("error", parameter, payload, result.url, "high", min(1.0, 0.65 + len(matched) * 0.03), {"matched_patterns": matched[:12], "baseline_matched_patterns": list(baseline_matched)[:12], "database_guesses": unique_dbs}))
         return findings
 
 class BooleanDetector:
