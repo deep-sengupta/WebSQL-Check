@@ -52,7 +52,7 @@ def test_cross_origin_307_never_replays_the_body(make_server):
 
 def test_same_origin_redirect_keeps_headers_and_drops_body_headers_on_get(make_server):
     srv = make_server({"/start": (302, {"Location": "/final"}, b""), "/final": (200, {}, b"ok")})
-    client(headers={"Authorization": "Bearer A", "Content-Length": "9", "Content-Type": "application/x-www-form-urlencoded"},
+    client(headers={"Authorization": "Bearer A", "Content-Length": "3", "Content-Type": "application/x-www-form-urlencoded"},
            scope_check=Scope.parse(["127.0.0.1"]).allows).request("POST", srv.url("/start"), data="a=b")
     method, path, headers, body = srv.seen[-1]
     assert (method, path, body) == ("GET", "/final", b"")
