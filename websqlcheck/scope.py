@@ -63,7 +63,7 @@ def _parse_rule(text: str):
     raw = text.strip().lower()
     if not raw:
         raise ScopeError("empty scope entry")
-    if any(c in raw for c in ("://", "?", "#", "@", "\\\\", " ")):
+    if any(c in raw for c in ("://", "?", "#", "@", "\\", " ")):
         raise ScopeError(
             f"invalid scope entry {text!r}: use a hostname (example.com), a wildcard (*.example.com), "
             "host:port, an IP or a CIDR range - not a URL or regex"
