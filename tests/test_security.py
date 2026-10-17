@@ -90,8 +90,8 @@ def test_huge_body_is_capped(make_server):
 
 
 def test_gzip_bomb_is_capped(make_server):
-    bomb = gzip.compress(b"\\0" * (20 * 1024 * 1024), compresslevel=9)
-    srv = make_server({"/bomb": (200, {"Content-Encoding": "gzip"}, bomb))
+    bomb = gzip.compress(b"\0" * (20 * 1024 * 1024), compresslevel=9)
+    srv = make_server({"/bomb": (200, {"Content-Encoding": "gzip"}, bomb)})
     result = client(max_bytes=1024 * 1024).request("GET", srv.url("/bomb"))
     assert result.truncated and len(result.body) == 1024 * 1024
 
