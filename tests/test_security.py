@@ -127,7 +127,7 @@ def test_slow_drip_headers_hit_the_wall_clock_deadline():
         conn, _ = listener.accept()
         try:
             conn.recv(65536)
-            for byte in b"HTTP/1.1 200 OK\\r\\nX-Pad: " + b"a" * 100:
+            for byte in b"HTTP/1.1 200 OK\r\nX-Pad: " + b"a" * 100:
                 conn.send(bytes([byte]))
                 time.sleep(0.01)
         except OSError:
