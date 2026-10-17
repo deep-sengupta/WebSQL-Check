@@ -3,8 +3,10 @@ from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 from .engine import Scanner, ScanConfig
+from .http import DEFAULT_MAX_RESPONSE_BYTES
 from .request import Target, parse_headers, parse_raw_request
 from .report import Reporter
+from .scope import Scope, ScopeError, split_url
 
 console = Console()
 
@@ -40,7 +42,8 @@ def build_parser():
     p.add_argument("--delay", type=int, default=4)
     p.add_argument("--baseline", type=int, default=3)
     p.add_argument("--techniques", default="error,boolean,time,union")
-    p.add_argument("--scope", default="")
+    p.add_argument("--scope", action="append", default=[], metavar="HOSTS", help="hosts we may talk to, e.g. example.com, *.example.com, host:8443, 10.0.0.0/24 (comma separated or repeated). Default: only the hosts of the given targets. Redirects to any other host are not followed.")
+    p.add_argument("--max-response-bytes", type=int, default=DEFAULT_MAX_RESPONSE_BYTES, help="keep at most this many bytes of each response (default: %(default)s)")
     p.add_argument("--insecure", action="store_true")
     p.add_argument("-o", "--output")
     p.add_argument("--format", choices=["json", "csv", "html"], default="json")
@@ -70,21 +73,48 @@ def load_targets(args):
         raise SystemExit("Provide --file, --stdin, or --request-file")
     return targets, headers
 
+def render_finding(finding) -> Text:
+    line = Text()
+    line.append(finding.technique.upper(), style="red")
+    line.append(" ")
+    line.append(str(finding.parameter), style="bold")
+    line.append(f" {finding.confidence} {finding.url}")
+    return line
+
+def check_output_path(parser, path):
+    out = Path(path)
+    if out.is_dir() or not out.parent.is_dir():
+        parser.error(f"cannot write report to {path!r}: directory does not exist or path is a directory")
+
 def main():
     parser = build_parser()
     show_banner()
     args = parser.parse_args()
+    if args.output:
+        check_output_path(parser, args.output)
+    try:
+        scope = Scope.parse(args.scope) if args.scope else None
+    except ScopeError as exc:
+        parser.error(str(exc))
     targets, headers = load_targets(args)
+    valid = []
+    for target in targets:
+        if split_url(target.url) is None:
+            console.print(Text.assemble(("Warning: ", "yellow"), f"skipping invalid target {target.url!r} (an absolute http:// or https:// URL is required)"))
+        else:
+            valid.append(target)
+    targets = valid
     techniques = tuple(x.strip().lower() for x in args.techniques.split(",") if x.strip())
-    config = ScanConfig(method=args.method.upper(), body=args.data, content_type=args.content_type, workers=max(1, args.workers), timeout=max(1, args.timeout), proxy=args.proxy, retries=max(0, args.retries), rate=max(0.0, args.rate), verify_tls=not args.insecure, techniques=techniques, delay=max(2, args.delay), baseline_requests=max(1, args.baseline), scope=args.scope)
+    config = ScanConfig(method=args.method.upper(), body=args.data, content_type=args.content_type, workers=max(1, args.workers), timeout=max(1, args.timeout), proxy=args.proxy, retries=max(0, args.retries), rate=max(0.0, args.rate), verify_tls=not args.insecure, techniques=techniques, delay=max(2, args.delay), baseline_requests=max(1, args.baseline), scope=scope, max_response_bytes=args.max_response_bytes)
     scanner = Scanner(config, headers)
     findings = scanner.scan(targets)
-    console.print(f"\n[bold]Findings:[/bold] {len(findings)}")
-    for finding in findings:
-        console.print(f"[red]{finding.technique.upper()}[/red] [bold]{finding.parameter}[/bold] {finding.confidence} {finding.url}")
     if args.output:
         Reporter(findings).write(args.output, args.format)
-        console.print(f"[green]Report written:[/green] {args.output}")
+    console.print(Text.assemble("\\n", ("Findings: ", "bold"), str(len(findings))))
+    for finding in findings:
+        console.print(render_finding(finding), soft_wrap=True)
+    if args.output:
+        console.print(Text.assemble(("Report written: ", "green"), args.output))
     if args.exit_on_find and findings:
         raise SystemExit(2)
 
