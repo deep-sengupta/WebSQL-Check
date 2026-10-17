@@ -1,9 +1,9 @@
-SQL syntax.*?MySQL
-Warning.*?\Wmysqli?_
+SQL syntax.{0,200}?MySQL
+Warning.{0,200}?\Wmysqli?_
 MySQLSyntaxErrorException
 valid MySQL result
 check the manual that (corresponds to|fits) your MySQL server version
-Unknown column '[^ ]+' in 'field list'
+Unknown column '[^ ]{1,200}' in 'field list'
 MySqlClient\.
 com\.mysql\.jdbc
 Zend_Db_(Adapter|Statement)_Mysqli_Exception
@@ -15,8 +15,8 @@ check the manual that (corresponds to|fits) your Drizzle server version
 MemSQL does not support this type of query
 is not supported by MemSQL
 unsupported nested scalar subselect
-PostgreSQL.*?ERROR
-Warning.*?\Wpg_
+PostgreSQL.{0,200}?ERROR
+Warning.{0,200}?\Wpg_
 valid PostgreSQL result
 Npgsql\.
 PG::SyntaxError:
@@ -27,14 +27,14 @@ PostgreSQL query failed
 org\.postgresql\.jdbc
 Pdo[./_\\]Pgsql
 PSQLException
-Driver.*? SQL[\-\_\ ]*Server
-OLE DB.*? SQL Server
-\bSQL Server[^&lt;&quot;]+Driver
-Warning.*?\W(mssql|sqlsrv)_
-\bSQL Server[^&lt;&quot;]+[0-9a-fA-F]{8}
-DB-Error.*
+Driver.{0,200}? SQL[\-\_\ ]*Server
+OLE DB.{0,200}? SQL Server
+\bSQL Server[^&lt;&quot;]{1,200}Driver
+Warning.{0,200}?\W(mssql|sqlsrv)_
+\bSQL Server[^&lt;&quot;]{1,200}[0-9a-fA-F]{8}
+DB-Error.{0,200}
 System\.Data\.SqlClient\.SqlException\.(SqlException|SqlConnection\.OnError)
-(?s)Exception.*?\bRoadhouse\.Cms\.
+(?s)Exception.{0,1000}?\bRoadhouse\.Cms\.
 Microsoft SQL Native Client error '[0-9a-fA-F]{8}
 \[SQL Server\]
 ODBC SQL Server Driver
@@ -54,8 +54,8 @@ ODBC Microsoft Access
 Syntax error \(missing operator\) in query expression
 \bORA-\d{5}
 Oracle error
-Oracle.*?Driver
-Warning.*?\W(oci|ora)_
+Oracle.{0,200}?Driver
+Warning.{0,200}?\W(oci|ora)_
 quoted string not properly terminated
 SQL command not properly ended
 macromedia\.jdbc\.oracle
@@ -63,7 +63,7 @@ oracle\.jdbc
 Zend_Db_(Adapter|Statement)_Oracle_Exception
 Pdo[./_\\](Oracle|OCI)
 OracleException
-CLI Driver.*?DB2
+CLI Driver.{0,200}?DB2
 DB2 SQL error
 \bdb2_\w+\(
 SQLCODE[=:\d, -]+SQLSTATE
@@ -72,8 +72,8 @@ Zend_Db_(Adapter|Statement)_Db2_Exception
 Pdo[./_\\]Ibm
 DB2Exception
 ibm_db_dbi\.ProgrammingError
-Warning.*?\Wifx_
-Exception.*?Informix
+Warning.{0,200}?\Wifx_
+Exception.{0,200}?Informix
 Informix ODBC Driver
 ODBC Informix driver
 com\.informix\.jdbc
@@ -81,13 +81,13 @@ weblogic\.jdbc\.informix
 Pdo[./_\\]Informix
 IfxException
 Dynamic SQL Error
-Warning.*?\Wibase_
+Warning.{0,200}?\Wibase_
 org\.firebirdsql\.jdbc
 Pdo[./_\\]Firebird
 SQLite/JDBCDriver
 SQLite\.Exception
 (Microsoft|System)\.Data\.SQLite\.SQLiteException
-Warning.*?\W(sqlite_|SQLite3::)
+Warning.{0,200}?\W(sqlite_|SQLite3::)
 \[SQLITE_ERROR\]
 SQLite error \d+:
 sqlite3.OperationalError:
@@ -95,32 +95,32 @@ SQLite3::SQLException
 org\.sqlite\.JDBC
 Pdo[./_\\]Sqlite
 SQLiteException
-SQL error.*?POS([0-9]+)
-Warning.*?\Wmaxdb_
+SQL error.{0,200}?POS([0-9]+)
+Warning.{0,200}?\Wmaxdb_
 DriverSapDB
--3014.*?Invalid end of SQL statement
+-3014.{0,200}?Invalid end of SQL statement
 com\.sap\.dbtech\.jdbc
-\[-3008\].*?: Invalid keyword or missing delimiter
-Warning.*?\Wsybase_
+\[-3008\].{0,200}?: Invalid keyword or missing delimiter
+Warning.{0,200}?\Wsybase_
 Sybase message
-Sybase.*?Server message
+Sybase.{0,200}?Server message
 SybSQLException
 Sybase\.Data\.AseClient
 com\.sybase\.jdbc
-Warning.*?\Wingres_
+Warning.{0,200}?\Wingres_
 Ingres SQLSTATE
-Ingres\W.*?Driver
+Ingres\W.{0,200}?Driver
 com\.ingres\.gcf\.jdbc
 Exception (condition )?\d+\. Transaction rollback
 com\.frontbase\.jdbc
 Syntax error 1. Missing
 (Semantic|Syntax) error [1-4]\d{2}\.
 Unexpected end of command in statement \[
-Unexpected token.*?in statement \[
+Unexpected token.{0,200}?in statement \[
 org\.hsqldb\.jdbc
 org\.h2\.jdbc
 \[42000-192\]
-![0-9]{5}![^\n]+(failed|unexpected|error|syntax|expected|violation|exception)
+![0-9]{5}![^\n]{1,200}(failed|unexpected|error|syntax|expected|violation|exception)
 \[MonetDB\]\[ODBC Driver
 nl\.cwi\.monetdb\.jdbc
 Syntax error: Encountered
@@ -140,12 +140,12 @@ com\.simba\.presto\.jdbc
 UNION query has different number of fields: \d+, \d+
 Altibase\.jdbc\.driver
 com\.mimer\.jdbc
-Syntax error,[^\n]+assumed to mean
+Syntax error,[^\n]{1,200}assumed to mean
 io\.crate\.client\.jdbc
 encountered after end of query
 A comparison operator is required here
 -10048: Syntax error
-rdmStmtPrepare\(.+?\) returned
+rdmStmtPrepare\(.{1,200}?\) returned
 SQ074: Line \d+:
 SR185: Undefined procedure
 SQ200: No table

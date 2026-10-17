@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import re
+import time
 from statistics import median
 from difflib import SequenceMatcher
 from .data import ERROR_SIGNATURES, BOOLEAN_PAYLOADS, TIME_PAYLOADS, GENERIC_TIME_PAYLOADS, UNION_PAYLOADS
@@ -33,35 +34,58 @@ def changed(a: HttpResult, b: HttpResult) -> float:
     status_component = 1.0 if a.status != b.status else 0.0
     return min(1.0, length_component * 0.5 + sim_component * 0.4 + status_component * 0.1)
 
-class ErrorDetector:
-    def __init__(self):
-        path = Path(__file__).resolve().parent / "sql_errors.txt"
-        self.patterns = [x.strip() for x in path.read_text(encoding="utf-8", errors="ignore").splitlines() if x.strip()]
+MAX_ANALYSIS_CHARS = 512 * 1024
+MATCH_BUDGET_SECONDS = 2.0
 
-    def detect(self, baseline: HttpResult, result: HttpResult, parameter: str, payload: str) -> list[Finding]:
-        findings = []
-        baseline_matched = set()
-        matched = []
-        dbs = []
-        for pattern in self.patterns:
-            try:
-                if re.search(pattern, baseline.body, re.I | re.M):
-                    baseline_matched.add(pattern)
-                if re.search(pattern, result.body, re.I | re.M) and pattern not in baseline_matched:
-                    matched.append(pattern)
-            except re.error:
-                continue
-        for db, patterns in ERROR_SIGNATURES.items():
-            for pattern in patterns:
-                try:
-                    if re.search(pattern, result.body, re.I | re.M) and not re.search(pattern, baseline.body, re.I | re.M):
-                        dbs.append(db)
-                except re.error:
-                    continue
-        if matched:
-            unique_dbs = list(dict.fromkeys(dbs))
-            findings.append(Finding("error", parameter, payload, result.url, "high", min(1.0, 0.65 + len(matched) * 0.03), {"matched_patterns": matched[:12], "baseline_matched_patterns": list(baseline_matched)[:12], "database_guesses": unique_dbs}))
-        return findings
+
+def _compile(patterns, source):
+    compiled = []
+    for pattern in patterns:
+        try:
+            compiled.append((pattern, re.compile(pattern, re.I | re.M)))
+        except re.error as exc:
+            raise ValueError(f"invalid signature in {source}: {pattern!r}: {exc}") from exc
+    return compiled
+
+
+_GENERIC_SIGNATURES = _compile(
+    [x.strip() for x in (Path(__file__).resolve().parent / "sql_errors.txt").read_text(encoding="utf-8", errors="ignore").splitlines() if x.strip()],
+    "sql_errors.txt",
+)
+_DB_SIGNATURES = [(db, _compile(patterns, f"ERROR_SIGNATURES[{db}]")) for db, patterns in ERROR_SIGNATURES.items()]
+
+
+def signature_hits(body: str, budget: float = MATCH_BUDGET_SECONDS) -> frozenset:
+    text = body[:MAX_ANALYSIS_CHARS]
+    deadline = time.monotonic() + budget
+    hits = set()
+    for pattern, rx in _GENERIC_SIGNATURES:
+        if time.monotonic() > deadline:
+            return frozenset(hits)
+        if rx.search(text):
+            hits.add(("", pattern))
+    for db, compiled in _DB_SIGNATURES:
+        for pattern, rx in compiled:
+            if time.monotonic() > deadline:
+                return frozenset(hits)
+            if rx.search(text):
+                hits.add((db, pattern))
+    return frozenset(hits)
+
+
+class ErrorDetector:
+    def baseline_hits(self, baseline: HttpResult) -> frozenset:
+        return signature_hits(baseline.body)
+
+    def detect(self, baseline_hits: frozenset, result: HttpResult, parameter: str, payload: str) -> list[Finding]:
+        new = signature_hits(result.body) - baseline_hits
+        matched = sorted(pattern for db, pattern in new if not db)
+        if not matched:
+            return []
+        dbs = list(dict.fromkeys(db for db, _ in sorted(new) if db))
+        old = sorted(pattern for db, pattern in baseline_hits if not db)
+        return [Finding("error", parameter, payload, result.url, "high", min(1.0, 0.65 + len(matched) * 0.03), {"matched_patterns": matched[:12], "baseline_matched_patterns": old[:12], "database_guesses": dbs})]
+
 
 class BooleanDetector:
     def detect(self, client: HttpClient, baseline: HttpResult, request_fn, parameter: str) -> list[Finding]:
@@ -128,15 +152,8 @@ class UnionDetector:
 
 class DatabaseFingerprint:
     def identify(self, body: str):
-        matches = {}
-        for db, patterns in ERROR_SIGNATURES.items():
-            count = 0
-            for pattern in patterns:
-                try:
-                    if re.search(pattern, body, re.I | re.M):
-                        count += 1
-                except re.error:
-                    pass
-            if count:
-                matches[db] = count
-        return sorted(matches.items(), key=lambda x: x[1], reverse=True)
+        counts = {}
+        for db, _pattern in signature_hits(body):
+            if db:
+                counts[db] = counts.get(db, 0) + 1
+        return sorted(counts.items(), key=lambda x: x[1], reverse=True)

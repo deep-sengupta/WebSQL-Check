@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qsl, urlsplit
+import threading
 import json
 import re
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.console import Console
+from rich.text import Text
 from .request import Target, split_target, mutate_query, mutate_form, flatten_json, mutate_json, mutate_path, mutate_xml
-from .http import HttpClient
-from .detectors import ErrorDetector, BooleanDetector, TimeDetector, UnionDetector, DatabaseFingerprint, Finding
+from .http import HttpClient, DEFAULT_MAX_RESPONSE_BYTES
+from .scope import Scope
+from .detectors import ErrorDetector, BooleanDetector, TimeDetector, UnionDetector, DatabaseFingerprint
 
 @dataclass
 class ScanConfig:
@@ -23,7 +26,8 @@ class ScanConfig:
     techniques: tuple = ("error", "boolean", "time", "union")
     delay: int = 4
     baseline_requests: int = 3
-    scope: str = ""
+    scope: object = None
+    max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES
 
 class Scanner:
     def __init__(self, config: ScanConfig, headers=None):
@@ -37,17 +41,35 @@ class Scanner:
         self.time_detector = TimeDetector()
         self.union_detector = UnionDetector()
         self.fingerprinter = DatabaseFingerprint()
+        self.scope = None
+        self._warned = set()
+        self._warn_lock = threading.Lock()
+
+    def resolve_scope(self, targets):
+        spec = self.config.scope
+        if isinstance(spec, Scope):
+            return spec
+        if spec:
+            return Scope.parse([spec] if isinstance(spec, str) else spec)
+        return Scope.from_targets(t.url for t in targets)
 
     def in_scope(self, url):
-        if not self.config.scope:
-            return True
-        return re.search(self.config.scope, url) is not None
+        return self.scope is not None and self.scope.allows(url)
 
-    def build_client(self, target_headers=None):
+    def warn_once(self, key, message):
+        with self._warn_lock:
+            if key in self._warned:
+                return
+            self._warned.add(key)
+            self.errors.append(key + (message,))
+        self.console.print(Text.assemble(("Warning: ", "yellow"), message))
+
+    def build_client(self, target_headers=None, target_url=None):
         merged = dict(self.headers)
         merged.update(target_headers or {})
         delay = (1.0 / self.config.rate) if self.config.rate > 0 else 0.0
-        return HttpClient(self.config.timeout, self.config.proxy or None, merged, self.config.retries, delay, self.config.verify_tls, self.in_scope)
+        scope = self.scope if self.scope is not None else Scope.from_targets([target_url or ""])
+        return HttpClient(self.config.timeout, self.config.proxy or None, merged, self.config.retries, delay, self.config.verify_tls, scope.allows, self.config.max_response_bytes)
 
     def parameter_jobs(self, target: Target):
         jobs = []
@@ -105,25 +127,27 @@ class Scanner:
 
     def scan_parameter(self, target, job):
         kind, name, original, index = job
-        client = self.build_client(target.headers)
+        client = self.build_client(target.headers, target.url)
         baseline_samples = []
         baseline_result = None
         for _ in range(max(1, self.config.baseline_requests)):
             result = client.request(target.method, target.url, data=target.body or None)
             if result.error:
+                self.warn_once((target.url, "baseline"), f"baseline request to {target.url} failed ({result.error}); this target was not tested.")
                 return []
             baseline_result = result
             baseline_samples.append(result.elapsed)
         findings = []
         fingerprint = self.fingerprinter.identify(baseline_result.body if baseline_result else "")
         db_hint = fingerprint[0][0] if fingerprint else ""
+        baseline_hits = self.error_detector.baseline_hits(baseline_result)
         request_with_payload = lambda payload: self.request_fn(client, target, kind, name, original, index, payload)
         if "error" in self.config.techniques:
             for payload in ["'123", "''123", "`123", '")123', '"))123', "`)123", "`))123", "'))123", "')123\"123", "[]123", '\"\"123', "'\"123", '\"\'123', "\\123"]:
                 result = request_with_payload(payload)
                 if result.error:
                     continue
-                findings.extend(self.error_detector.detect(baseline_result, result, name, payload))
+                findings.extend(self.error_detector.detect(baseline_hits, result, name, payload))
                 if findings:
                     break
         if "boolean" in self.config.techniques:
@@ -136,8 +160,10 @@ class Scanner:
 
     def scan(self, targets):
         jobs = []
+        self.scope = self.resolve_scope(targets)
         for target in targets:
             if not self.in_scope(target.url):
+                self.warn_once((target.url, "scope"), f"{target.url} is outside the scope ({self.scope.describe()}) and was skipped.")
                 continue
             jobs.extend((target, job) for job in self.parameter_jobs(target))
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), BarColumn()) as progress:
@@ -151,7 +177,7 @@ class Scanner:
                     except Exception as exc:
                         results = []
                         self.errors.append((target.url, job[1], str(exc)))
-                        self.console.print(f"[yellow]Warning:[/yellow] test failed for {job[1]} on {target.url}: {exc}")
+                        self.console.print(Text.assemble(("Warning: ", "yellow"), f"test failed for {job[1]} on {target.url}: {exc}"))
                     self.findings.extend(results)
                     progress.advance(task)
         return self.findings
