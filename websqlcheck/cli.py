@@ -110,7 +110,7 @@ def main():
     findings = scanner.scan(targets)
     if args.output:
         Reporter(findings).write(args.output, args.format)
-    console.print(Text.assemble("\\n", ("Findings: ", "bold"), str(len(findings))))
+    console.print(Text.assemble("\n", ("Findings: ", "bold"), str(len(findings))))
     for finding in findings:
         console.print(render_finding(finding), soft_wrap=True)
     if args.output:
